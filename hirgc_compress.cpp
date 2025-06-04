@@ -8,14 +8,18 @@
 #include <filesystem>   
 #include <chrono> 
 
+//length of k_tuple
 const int K_TUPLE_LENGTH = 20;
 
+//maximum length of hash table
 const size_t HASH_TABLE_LENGTH = 1 << 25;
 
+//enum class for representing DNA bases A, C, G, T
 enum class Base : uint8_t {
     A = 0, C = 1, G = 2, T = 3, UNKNOWN = 4
 };
 
+//struct for auxiliary information from target fasta file
 struct TargetAuxInfo {
 
     std::string id;
@@ -23,6 +27,7 @@ struct TargetAuxInfo {
     std::vector<std::pair<size_t, char>> non_acgt_chars;
 };
 
+//struct for representing a found refrence sequence or a mismatched literal
 struct MatchRecord {
     
     bool is_match;
@@ -30,11 +35,14 @@ struct MatchRecord {
     int length;
     std::vector<Base> mismatch_sequence;
 
+    //constructor for match
     MatchRecord(size_t r_pos, int l) : is_match(true), ref_start_pos(r_pos), length(l) {}
 
+    //constructor for mismatch
     MatchRecord(const std::vector<Base>& seq) : is_match(false), ref_start_pos(0), length(static_cast<int>(seq.size())), mismatch_sequence(seq) {}
 };
 
+//converts chars to base enum value
 Base char_to_base(char ch) {;
     if (ch == 'A') return Base::A;
     if (ch == 'C') return Base::C;
@@ -44,6 +52,7 @@ Base char_to_base(char ch) {;
 }
 
 
+//function for fasta file parsing which takes file_path as an input and outputs auxiliary information and ACGT sequence
 void parse_fasta(const std::string& file_path, TargetAuxInfo& aux_info, std::vector<Base>& out_pure_acgt_sequence, bool is_target_file) {
 
     std::ifstream file(file_path);
@@ -52,6 +61,7 @@ void parse_fasta(const std::string& file_path, TargetAuxInfo& aux_info, std::vec
         throw std::runtime_error("Cannot open FASTA file: " + file_path);
     }
 
+    //output parameters reset
     out_pure_acgt_sequence.clear(); 
     if (is_target_file) {
         aux_info = TargetAuxInfo(); 
@@ -102,6 +112,7 @@ void parse_fasta(const std::string& file_path, TargetAuxInfo& aux_info, std::vec
     }
 }
 
+//function to calculate 64-bit integer value for a k-mer, takes sequence and starting index as inputs
 uint64_t calculate_kmer_value(const std::vector<Base>& seq, size_t start_index, int k_t_l) {
 
     uint64_t value = 0;
@@ -121,8 +132,10 @@ uint64_t calculate_kmer_value(const std::vector<Base>& seq, size_t start_index, 
     return value;
 }
 
+//vector for building hash table
 using HashTable = std::vector<std::vector<size_t>>;
 
+//function for building hash tabels from refrence sequeneces, that takes sequence input and outputs the table
 void build_reference_hash_table(const std::vector<Base>& ref_pure_acgt_sequence, HashTable& hash_table) {
 
     hash_table.assign(HASH_TABLE_LENGTH, std::vector<size_t>()); 
@@ -137,6 +150,7 @@ void build_reference_hash_table(const std::vector<Base>& ref_pure_acgt_sequence,
     }
 }
 
+// greedy matching function to find matches and mismathches, it takes target and ref sequences as well as hash table as inputs, and outputs a MatchRecord vector
 void greedy_match_target(const std::vector<Base>& target_pure_acgt_sequence, const std::vector<Base>& ref_pure_acgt_sequence, const HashTable& ref_hash_table, std::vector<MatchRecord>& out_match_records) {
    
     out_match_records.clear(); 
@@ -148,6 +162,7 @@ void greedy_match_target(const std::vector<Base>& target_pure_acgt_sequence, con
 
     while (current_target_pos < target_pure_acgt_sequence.size()) {
 
+        // If remaining part of target is too short for a k-mer, it means it's a mismatch
         if (target_pure_acgt_sequence.size() - current_target_pos < static_cast<size_t>(K_TUPLE_LENGTH)) {
 
             for (size_t i = current_target_pos; i < target_pure_acgt_sequence.size(); ++i) {
@@ -206,6 +221,7 @@ void greedy_match_target(const std::vector<Base>& target_pure_acgt_sequence, con
 
         
         if (best_match_len >= K_TUPLE_LENGTH) { 
+            //Match
             if (!current_mismatch_buffer.empty()) {
                 out_match_records.emplace_back(current_mismatch_buffer);
                 current_mismatch_buffer.clear();
@@ -215,6 +231,7 @@ void greedy_match_target(const std::vector<Base>& target_pure_acgt_sequence, con
             current_target_pos += best_match_len;
             
         } else { 
+            //Mismatch 
             current_mismatch_buffer.push_back(target_pure_acgt_sequence[current_target_pos]);
             current_target_pos++; 
         }
@@ -225,6 +242,9 @@ void greedy_match_target(const std::vector<Base>& target_pure_acgt_sequence, con
     }
 }
 
+
+
+//helper function for Run-Length Encoding format output
 void write_rle_vector(std::ostream& out, const std::vector<int>& data) {
 
     if (data.empty()) {
@@ -255,13 +275,17 @@ void write_rle_vector(std::ostream& out, const std::vector<int>& data) {
 }
 
 
-void serialize_compressed_data(std::ostream& out, const TargetAuxInfo& aux_info, const std::vector<MatchRecord>& match_records) {
+//function for serializing compressed data to output file
+void serialize_compressed_data_compact(std::ostream& out, const TargetAuxInfo& aux_info, const std::vector<MatchRecord>& match_records) {
     
+    //header
     out << ">" << aux_info.id << "\n";
 
+    //rle format
     write_rle_vector(out, aux_info.line_lengths);
     out << "\n";
 
+    //non-ACGT characters
     out << aux_info.non_acgt_chars.size(); 
     size_t last_non_acgt_pos = 0;
     for (const auto& non_acgt_item : aux_info.non_acgt_chars) {
@@ -272,6 +296,7 @@ void serialize_compressed_data(std::ostream& out, const TargetAuxInfo& aux_info,
     out << "\n";
 
 
+    //Match/Mismatch data 
     size_t last_ref_match_pos = 0; 
     for (const auto& rec : match_records) {
         if (rec.is_match) {
@@ -288,6 +313,8 @@ void serialize_compressed_data(std::ostream& out, const TargetAuxInfo& aux_info,
     }
 }
 
+
+//main program function that takes fasta file arguments
 int main(int argc, char* argv[]) {
     
     if (argc != 3) {
@@ -301,6 +328,7 @@ int main(int argc, char* argv[]) {
     std::string target_fasta_path = argv[2]; 
 
     try {
+        //parse Reference fasta file
         std::cout << "Parsing reference: " << ref_fasta_path << "..." << std::endl;
         TargetAuxInfo ref_aux_info;
         std::vector<Base> ref_pure_acgt_sequence; 
@@ -309,20 +337,25 @@ int main(int argc, char* argv[]) {
         if (ref_pure_acgt_sequence.empty()) { 
             throw std::runtime_error("Reference sequence is empty or contains no ACGT characters.");
         }
+
+        //build refrence Hash Table 
         std::cout << "Building hash table from reference..." << std::endl;
         HashTable reference_hash_table; 
         build_reference_hash_table(ref_pure_acgt_sequence, reference_hash_table);
         
 
+        //parse Target fasta file
         std::cout << "Parsing target: " << target_fasta_path << "..." << std::endl;
         TargetAuxInfo target_aux_info; 
         std::vector<Base> target_pure_acgt_sequence;
         parse_fasta(target_fasta_path, target_aux_info, target_pure_acgt_sequence, true);
        
+        //greedy matching
         std::cout << "Performing greedy matching..." << std::endl;
         std::vector<MatchRecord> match_records; 
         greedy_match_target(target_pure_acgt_sequence, ref_pure_acgt_sequence, reference_hash_table, match_records);
 
+        //serialize data to an output file
         std::filesystem::path target_p(target_fasta_path); 
         std::string output_filename_str = (target_p.parent_path() / ("compressed_" + target_p.stem().string() + ".txt")).string();
         
@@ -332,7 +365,7 @@ int main(int argc, char* argv[]) {
             throw std::runtime_error("Cannot open output file: " + output_filename_str);
         }
 
-        serialize_compressed_data(out_file, target_aux_info, match_records);
+        serialize_compressed_data_compact(out_file, target_aux_info, match_records);
         out_file.close(); 
 
         auto end_time = std::chrono::high_resolution_clock::now(); 
