@@ -12,7 +12,7 @@
 const int K_TUPLE_LENGTH = 20;
 
 //maximum length of hash table
-const size_t HASH_TABLE_LENGTH = 1 << 25;
+const size_t HASH_TABLE_LENGTH = 1 << 21;
 
 //enum class for representing DNA bases A, C, G, T
 enum class Base : uint8_t {
