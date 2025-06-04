@@ -11,10 +11,13 @@
 #include <cstdint>  
 #include <chrono>     
 
+
+//enum class for representing DNA bases A, C, G, T
 enum class Base : uint8_t {
     A = 0, C = 1, G = 2, T = 3, UNKNOWN = 4
 };
 
+//struct for auxiliary information from target fasta file
 struct TargetAuxInfo {
 
     std::string id;
@@ -22,6 +25,7 @@ struct TargetAuxInfo {
     std::vector<std::pair<size_t, char>> non_acgt_chars;
 };
 
+//struct for representing a found refrence sequence or a mismatched literal
 struct MatchRecord {
     
     bool is_match;
@@ -31,11 +35,13 @@ struct MatchRecord {
 
 };
 
+//converts ints to base enum value
 Base int_to_base(int val) {
     if (val >= 0 && val <= 3) return static_cast<Base>(val);
     return Base::UNKNOWN; 
 }
 
+//converts chars to base enum value
 Base char_to_base(char ch) {
     if (ch == 'A') return Base::A;
     if (ch == 'C') return Base::C;
@@ -44,6 +50,7 @@ Base char_to_base(char ch) {
     return Base::UNKNOWN;
 }
 
+//converts base enum value to chars
 char base_to_char(Base b) {
     if (b == Base::A) return 'A';
     if (b == Base::C) return 'C';
@@ -52,6 +59,7 @@ char base_to_char(Base b) {
     return '?';
 }
 
+//function for fasta file parsing which takes file_path as an input and outputs ACGT sequence
 void parse_reference_fasta(const std::string& file_path, std::vector<Base>& out_pure_acgt_sequence) {
     
     std::ifstream file(file_path);
@@ -91,6 +99,7 @@ void parse_reference_fasta(const std::string& file_path, std::vector<Base>& out_
     }
 }
 
+//function that deserializes Run-Length Encoding format input 
 void deserialize_rle_vector(std::istream& in, std::vector<int>& data) {
 
     data.clear();
@@ -115,17 +124,22 @@ void deserialize_rle_vector(std::istream& in, std::vector<int>& data) {
     std::getline(in, rest_of_the_line);
 }
 
+
+//function for deserializing compressed data from input file
 void deserialize_data_compact(std::istream& in,TargetAuxInfo& aux_info, std::vector<MatchRecord>& match_records) {
     
     aux_info = TargetAuxInfo(); 
     match_records.clear();      
     std::string line;          
 
+    //header line
     std::getline(in, line);
     aux_info.id = line.substr(1);
 
+    //RLE line lengths
     deserialize_rle_vector(in, aux_info.line_lengths);
 
+    //deserialize Non-ACGT characters
     int num_non_acgt_occurrences;
     in >> num_non_acgt_occurrences;
 
@@ -144,6 +158,7 @@ void deserialize_data_compact(std::istream& in,TargetAuxInfo& aux_info, std::vec
     std::getline(in, line); 
     
 
+    //match/mismatch data
     size_t last_ref_match_pos = 0; 
     while (std::getline(in, line)) { 
 
@@ -156,6 +171,7 @@ void deserialize_data_compact(std::istream& in,TargetAuxInfo& aux_info, std::vec
         MatchRecord rec; 
         if (type_char == 'M') {
 
+            //match 
             rec.is_match = true;
             size_t ref_pos;
             iss >> ref_pos >> rec.length; 
@@ -164,6 +180,7 @@ void deserialize_data_compact(std::istream& in,TargetAuxInfo& aux_info, std::vec
 
         } else if (type_char == 'S') {
             
+            //mismatch
             rec.is_match = false;
             iss >> rec.length; 
             std::string base_digits_str;
@@ -179,8 +196,10 @@ void deserialize_data_compact(std::istream& in,TargetAuxInfo& aux_info, std::vec
     }
 }
 
+//function for reconstructing fasta file
 void reconstruct_and_write_fasta(std::ostream& out_stream, const TargetAuxInfo& aux_info, const std::vector<MatchRecord>& match_records, const std::vector<Base>& ref_pure_acgt_sequence) {
     
+    //reconstruct ACGT sequence
     std::vector<Base> target_pure_acgt_sequence;
     size_t estimated_target_pure_len = 0;
     for(const auto& rec : match_records) estimated_target_pure_len += rec.length;
@@ -200,6 +219,7 @@ void reconstruct_and_write_fasta(std::ostream& out_stream, const TargetAuxInfo& 
     size_t final_estimated_length = target_pure_acgt_sequence.size() + aux_info.non_acgt_chars.size();
     final_sequence_str.reserve(final_estimated_length);
 
+    //create a map of original positions for non-ACGT Chars
     std::map<size_t, char> non_acgt_insertions_map;
     for (const auto& item : aux_info.non_acgt_chars) {
         non_acgt_insertions_map[item.first] = item.second;
@@ -217,6 +237,7 @@ void reconstruct_and_write_fasta(std::ostream& out_stream, const TargetAuxInfo& 
         total_length_to_build = target_pure_acgt_sequence.size();
     }
 
+    //build the string character by character
     for (original_pos_tracker = 0; original_pos_tracker < total_length_to_build; ++original_pos_tracker) {
 
         auto it = non_acgt_insertions_map.find(original_pos_tracker);
@@ -232,6 +253,7 @@ void reconstruct_and_write_fasta(std::ostream& out_stream, const TargetAuxInfo& 
         }
     }
     
+    //write to output
     out_stream << ">" << aux_info.id << "\n";
     size_t current_char_idx_output = 0;
     if (!aux_info.line_lengths.empty()) {
@@ -247,6 +269,7 @@ void reconstruct_and_write_fasta(std::ostream& out_stream, const TargetAuxInfo& 
     }
 }
 
+//main program function that takes refrence fasta file argument and compressed txt argument
 int main(int argc, char* argv[]) {
     
     if (argc != 3) {
@@ -263,6 +286,7 @@ int main(int argc, char* argv[]) {
 
     try {
 
+        //parse reference fasta file
         std::cout << "Parsing reference: " << ref_fasta_path << "..." << std::endl;
         std::vector<Base> ref_pure_acgt_sequence; 
         parse_reference_fasta(ref_fasta_path, ref_pure_acgt_sequence);
@@ -271,6 +295,7 @@ int main(int argc, char* argv[]) {
             throw std::runtime_error("Reference sequence is empty or contains no ACGT characters for decompression.");
         }
 
+        //deserialize the data from the compact compressed file
         std::cout << "Reading and deserializing compressed file: " << compressed_file_path << "..." << std::endl;
         std::ifstream in_compressed_file(compressed_file_path); 
 
@@ -283,6 +308,7 @@ int main(int argc, char* argv[]) {
         in_compressed_file.close(); 
         std::cout << "Deserialization complete. Target ID: " << target_aux_info.id << std::endl;
 
+        //Reconstruct the original target fasta sequence and write it to the output file
         std::cout << "Reconstructing and writing FASTA to: " << output_fasta_path << "..." << std::endl;
         std::ofstream out_fasta_file(output_fasta_path); 
         
