@@ -1,6 +1,10 @@
 # bioinformatika_HiRGC
 
-Project based on creating an own implementation of HiRGC algorithm provided from https://github.com/yuansliu/HiRGC repository.
+Project based on creating an own implementation of high performance referential genome compression algorithm.
+
+### Credits
+
+https://github.com/yuansliu/HiRGC
 
 ### Installation
 
