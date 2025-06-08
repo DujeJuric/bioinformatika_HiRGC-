@@ -9,7 +9,9 @@
 #include <filesystem>   
 #include <cctype>       
 #include <cstdint>  
-#include <chrono>     
+#include <chrono>  
+#include <cstdlib>
+  
 
 
 //enum class for representing DNA bases A, C, G, T
@@ -148,7 +150,7 @@ void deserialize_data_compact(std::istream& in,TargetAuxInfo& aux_info, std::vec
         size_t delta_pos;
         int char_as_int;
 
-         if (!(in >> delta_pos >> char_as_int)) {
+        if (!(in >> delta_pos >> char_as_int)) {
             throw std::runtime_error("Error reading non-ACGT char position or value at occurrence " + std::to_string(i+1));
         }
 
@@ -173,9 +175,9 @@ void deserialize_data_compact(std::istream& in,TargetAuxInfo& aux_info, std::vec
 
             //match 
             rec.is_match = true;
-            size_t ref_pos;
+            long long ref_pos;
             iss >> ref_pos >> rec.length; 
-            rec.ref_start_pos = last_ref_match_pos+ ref_pos; 
+            rec.ref_start_pos = last_ref_match_pos + ref_pos; 
             last_ref_match_pos = rec.ref_start_pos; 
 
         } else if (type_char == 'S') {
@@ -251,10 +253,10 @@ void reconstruct_and_write_fasta(std::ostream& out_stream, const TargetAuxInfo& 
                 final_sequence_str += base_to_char(target_pure_acgt_sequence[pure_acgt_idx++]);
             }
         }
-    }
+    }   
     
     //write to output
-    out_stream << ">" << aux_info.id << "\n";
+    out_stream << aux_info.id << "\n";
     size_t current_char_idx_output = 0;
     if (!aux_info.line_lengths.empty()) {
         for (int line_len : aux_info.line_lengths) {
@@ -280,9 +282,21 @@ int main(int argc, char* argv[]) {
     auto start_time = std::chrono::high_resolution_clock::now();
 
     std::string ref_fasta_path = argv[1];        
-    std::string compressed_file_path = argv[2];
-    std::filesystem::path comp_p(compressed_file_path);  
+    std::string compressed_zip_path = argv[2];
+    std::filesystem::path comp_p(compressed_zip_path);  
     std::string output_fasta_path = (comp_p.parent_path() / ("decompressed.fna")).string();
+
+    //unzip
+
+    
+    std::string ps_command = "powershell -Command \"Expand-Archive -LiteralPath '" + compressed_zip_path + "' -DestinationPath '" + comp_p.parent_path().string() + "' -Force\"";
+    std::system(ps_command.c_str());
+    std::string expected_txt_file = (comp_p.parent_path() / (comp_p.stem().string() + ".txt")).string();
+
+    
+    
+    std::filesystem::copy_file(expected_txt_file, output_fasta_path, std::filesystem::copy_options::overwrite_existing);
+    
 
     try {
 
@@ -296,11 +310,11 @@ int main(int argc, char* argv[]) {
         }
 
         //deserialize the data from the compact compressed file
-        std::cout << "Reading and deserializing compressed file: " << compressed_file_path << "..." << std::endl;
-        std::ifstream in_compressed_file(compressed_file_path); 
+        std::cout << "Reading and deserializing compressed file: " << output_fasta_path << "..." << std::endl;
+        std::ifstream in_compressed_file(output_fasta_path); 
 
         if (!in_compressed_file.is_open()) { 
-            throw std::runtime_error("Cannot open compressed file: " + compressed_file_path);
+            throw std::runtime_error("Cannot open compressed file: " + output_fasta_path);
         }
         TargetAuxInfo target_aux_info; 
         std::vector<MatchRecord> match_records; 

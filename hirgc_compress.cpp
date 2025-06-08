@@ -81,8 +81,7 @@ void parse_fasta(const std::string& file_path, TargetAuxInfo& aux_info, std::vec
             if (first_header) {
 
                 if (is_target_file) {
-                    size_t id_end = line.find_first_of(" \t\r\n");
-                    aux_info.id = line.substr(1, id_end != std::string::npos ? id_end - 1 : std::string::npos);
+                    aux_info.id = line;
                 }
                 first_header = false;
 
@@ -276,7 +275,7 @@ void write_rle_vector(std::ostream& out, const std::vector<int>& data) {
 
 
 //function for serializing compressed data to output file
-void serialize_compressed_data_compact(std::ostream& out, const TargetAuxInfo& aux_info, const std::vector<MatchRecord>& match_records) {
+void serialize_compressed_data(std::ostream& out, const TargetAuxInfo& aux_info, const std::vector<MatchRecord>& match_records) {
     
     //header
     out << ">" << aux_info.id << "\n";
@@ -289,7 +288,7 @@ void serialize_compressed_data_compact(std::ostream& out, const TargetAuxInfo& a
     out << aux_info.non_acgt_chars.size(); 
     size_t last_non_acgt_pos = 0;
     for (const auto& non_acgt_item : aux_info.non_acgt_chars) {
-        out << " " << (non_acgt_item.first - last_non_acgt_pos); 
+        out << " " << (static_cast<long long>(non_acgt_item.first) - static_cast<long long>(last_non_acgt_pos)); 
         out << " " << static_cast<int>(non_acgt_item.second);   
         last_non_acgt_pos = non_acgt_item.first;
     }
@@ -300,7 +299,7 @@ void serialize_compressed_data_compact(std::ostream& out, const TargetAuxInfo& a
     size_t last_ref_match_pos = 0; 
     for (const auto& rec : match_records) {
         if (rec.is_match) {
-            out << "M " << (rec.ref_start_pos - last_ref_match_pos); 
+            out << "M " << (static_cast<long long>(rec.ref_start_pos) - static_cast<long long>(last_ref_match_pos)); 
             out << " " << rec.length << "\n";                                     
             last_ref_match_pos = rec.ref_start_pos; 
         } else {
@@ -359,15 +358,24 @@ int main(int argc, char* argv[]) {
         std::filesystem::path target_p(target_fasta_path); 
         std::string output_filename_str = (target_p.parent_path() / ("compressed_" + target_p.stem().string() + ".txt")).string();
         
+        
         std::cout << "Writing compressed data to: " << output_filename_str << "..." << std::endl;
         std::ofstream out_file(output_filename_str); 
         if (!out_file.is_open()) { 
             throw std::runtime_error("Cannot open output file: " + output_filename_str);
         }
 
-        serialize_compressed_data_compact(out_file, target_aux_info, match_records);
+        serialize_compressed_data(out_file, target_aux_info, match_records);
         out_file.close(); 
 
+        //zip
+        std::string zip_filename = 
+        (target_p.parent_path() / ("compressed_" + target_p.stem().string() + ".zip")).string();
+
+        std::string ps_command = "powershell -Command \"Compress-Archive -Path '" + output_filename_str + "' -DestinationPath '" + zip_filename + "' -Force\"";
+
+        std::system(ps_command.c_str());
+        
         auto end_time = std::chrono::high_resolution_clock::now(); 
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         std::cout << "Compression successful." << std::endl;

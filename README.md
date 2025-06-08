@@ -29,14 +29,14 @@ Compressing a FASTA file:
 ./hirgc_compr <refrence FASTA file> <target FASTA file>
 ```
 
-The result compressed txt file should be located in target folder from used data folder.
+The result compressed zip file should be located in target folder from used data folder.
 
 ### Decompression
 
 Decompressing a compressed txt file:
 
 ```bash
-./hirgc_decompr <refrence FASTA file> <compressed txt file>
+./hirgc_decompr <refrence FASTA file> <compressed zip file>
 ```
 
 The result decompressed fasta file should be located in target folder from used data folder.
